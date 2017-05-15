@@ -13,13 +13,13 @@ public class Display {
 	private Canvas canvas;	
 	
 	private String title;
-	private int width,height;
+	public static int width,height;
 	
 	
 	public Display(String title,int width,int height){
 		this.title=title;
-		this.width=width;
-		this.height=height;	
+		Display.width=width;
+		Display.height=height;	
 		
 	}
 	
@@ -27,17 +27,12 @@ public class Display {
 		return width;
 	}
 
-	public void setWidth(int width) {
-		this.width = width;
-	}
-
+	
 	public int getHeight() {
 		return height;
 	}
 
-	public void setHeight(int height) {
-		this.height = height;
-	}
+	
 
 	public void start(){
 		frame=new JFrame(title);

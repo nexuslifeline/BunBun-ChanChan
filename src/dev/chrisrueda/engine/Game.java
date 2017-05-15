@@ -96,6 +96,7 @@ public class Game implements Runnable {
 		long timer = 0;
 		long elapseTime = 0;
 		int ctrFrame = 0;
+		long iteration = 0;
 		
 		
 		long newTime = 0;
@@ -107,22 +108,23 @@ public class Game implements Runnable {
 			
 			//accumulator = elapseTime / nanoPerFrame;
 			
-			delta += elapseTime;
+			delta += (newTime - lastTime) / nanoPerFrame;
 			timer += elapseTime;
 			
 			lastTime = newTime;
+			iteration++;
 			
-			if(delta >= nanoPerFrame){ //if delta time reached the amount of threshold which is the nanotime per frame, call tick and render methods
+			if(delta >= 1){ //if delta time reached the amount of threshold which is the nanotime per frame, call tick and render methods
 				tick();
-				render();
-				
-				ctrFrame++;
+				render();				
+				ctrFrame++;				
 				delta=0;				
 			}
 			
 			if(timer >= secondsInNano){
-				System.out.println("Ticks : "+ctrFrame);
+				System.out.println("FPS : "+ctrFrame + " ITERATION : "+iteration);
 				timer = 0;
+				iteration = 0;
 				ctrFrame = 0;
 			}
 			

@@ -1,328 +1,364 @@
 package dev.chrisrueda.engine.world;
 
 import java.awt.Graphics;
-import java.io.BufferedReader;
-import java.io.FileReader;
+import java.awt.Rectangle;
+import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.util.ArrayList;
+
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.parsers.DocumentBuilder;
+import org.w3c.dom.Document;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
+
+import org.w3c.dom.Element;
+
 
 import dev.chrisrueda.engine.Game;
+import dev.chrisrueda.engine.display.Display;
+import dev.chrisrueda.engine.entities.Entity;
 import dev.chrisrueda.engine.gfx.GameCamera;
-import dev.chrisrueda.engine.tiles.Bridge;
-import dev.chrisrueda.engine.tiles.FenceTile;
-import dev.chrisrueda.engine.tiles.GrassTile;
-import dev.chrisrueda.engine.tiles.River;
-import dev.chrisrueda.engine.tiles.Street;
-import dev.chrisrueda.engine.tiles.Tile;
-import dev.chrisrueda.engine.tiles.TreeTile;
+import dev.chrisrueda.engine.gfx.ImageLoader;
+import dev.chrisrueda.engine.world.World.MapEntity;
+
 
 public class World {
 	
-	public static Tile[] tiles=new Tile[256];
+	private String tileData;
+	private int mapCol, mapRow;
 	
 	
-	private String tileMapNotation;
-	private int worldWidth,worldRow;
-	private int[][] tileMaps;
 	
-	private int tileWidth=64,tileHeight=64; //height of crop image 64 x 64 pixels
-	private int xOffset,yOffset,x,y;
 	
-	private Game game;	
+	private MapLayer[] map;
+	private BufferedImage[] sourceImage;
+	
+	private ArrayList<BufferedImage> tileImage = new ArrayList<>();
+	private ArrayList<MapEntity> mapEntities = new ArrayList<>();
+	private ArrayList<TileSet> tileSets = new ArrayList<>();
+	private ArrayList<Rectangle> collisionBoxes = new ArrayList<>();
+	
+	
+
+
+	private final String base = "/worlds/map/";
+	
+	private int TILEWIDTH = 32, TILEHEIGHT = 32; 
+	private int xOffset, yOffset, x, y;	
 
 	
-	private FenceTile fenceTile;
-	private TreeTile treeTile;
-	private GrassTile grassTile;
-	private River riverTile;
-	private Bridge  bridgeTile;
-	private Street streetTile;
+	
+	
+	
+	public class MapEntity{
+		public String MapEntityPath;
+		public int x, y, width, height;
+		
+		public MapEntity(String MapEntityPath, int x, int y, int width, int height) {
+			this.MapEntityPath = MapEntityPath;
+			this.x = x;
+			this.y = y;
+			this.width = width;
+			this.height = height;
+			
+			
+		}
+		
+		public BufferedImage getImage() {
+			BufferedImage tmpImg = ImageLoader.loadImage( base + MapEntityPath );
+			return tmpImg.getSubimage(0, 0, width, height);
+		}
+		
+		
+	}
+	
+	
+	class MapLayer{
+		private String tileIDs;
+		private int[][] tiles;
+		private int layerRow, layerColumn;		
+		
+		public MapLayer(String tileIDList,int layerRow, int layerColumn){
+			this.tileIDs = tileIDList;		
+			this.layerRow = layerRow;
+			this.layerColumn = layerColumn;	
+			
+			init();
+		}
+		
+		public void init() {
+			String[] tokens = tileIDs.replace("\n", "").replace(" ", "").split(","); //remove spaces then split to array
+			tiles = new int[layerRow][layerColumn];
+			int counter = 0;			
+			for(int row = 0; row < layerRow; row++) {
+				for(int col = 0; col < layerColumn; col++) {
+					tiles[row][col] = Integer.parseInt( tokens[counter].toString() );		
+					counter++;
+				}				
+			}			
+			
+		}		
+		
+	}
+	
+	
+	class TileSet{
+		private int fgid, tileHeight, tileWidth, tileCount, columnCount, rowCount;
+		private String source , basePath;	
+		
+
+		public TileSet(String source, int fgid, int tileHeight, int tileWidth, int tileCount, int columnCount) {
+			this.source = source;
+			this.fgid = fgid;
+			this.tileHeight = tileHeight;
+			this.tileWidth = tileWidth;
+			this.tileCount = tileCount;
+			this.columnCount = columnCount;
+			this.rowCount = tileCount / columnCount;
+			this.basePath = base + source;
+		}	
+		
+		
+		
+	}
+	
+	
+	
+
+	
+
 	
 	public World(Game game,String path){	
-		this.game=game;
-
-		
-		//load tile images to tiles array
-		grassTile=new GrassTile(10);
-		tiles[10]=grassTile;
-		grassTile.setxDistance(0);
-		grassTile.setyDistance(0);
-		grassTile.setBoundsWidth(0); //the width of the rectangle boundary base on the X,Y points set from above
-		grassTile.setBoundsHeight(0);//the height of the rectangle boundary base on the X,Y points set from above
-		grassTile.setShowCollissionRect(false);
-		
-		
-		
-		
-		treeTile=new TreeTile(90);
-		tiles[90]=treeTile;
-		treeTile.setxDistance(0); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		treeTile.setyDistance(0); //the Y of rectangle Boundary
-		treeTile.setBoundsWidth(64); //the width of the rectangle boundary base on the X,Y points set from above
-		treeTile.setBoundsHeight(64);//the height of the rectangle boundary base on the X,Y points set from above		
-		treeTile.setShowCollissionRect(false);
-		
-		
-		//---------------------------------------------------------------------------------------
-		//					all fence tiles starts width id 40 and up
-		
-		//fence tile(left) settings, tile class has a default setting but for those tile that are not walkable, we change those default seetings
-		fenceTile=new FenceTile(40); //2 is the id of tile, which will be the index of the array which will hold this tile
-		tiles[40]=fenceTile;	
-		fenceTile.setxDistance(30); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		fenceTile.setyDistance(0); //the Y of rectangle Boundary
-		fenceTile.setBoundsWidth(6); //the width of the rectangle boundary base on the X,Y points set from above
-		fenceTile.setBoundsHeight(64);//the height of the rectangle boundary base on the X,Y points set from above		
-		fenceTile.setWalkable(false); //default of tile is walkable, but this tile is not walkable so it as "false"
-		fenceTile.setShowCollissionRect(false); //set true to view, collision rectangle-for testing purpose
-		
-		//fence tile(left) settings, tile class has a default setting but for those tile that are not walkable, we change those default seetings
-		fenceTile=new FenceTile(41); //2 is the id of tile, which will be the index of the array which will hold this tile
-		tiles[41]=fenceTile;	
-		fenceTile.setxDistance(0); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		fenceTile.setyDistance(0); //the Y of rectangle Boundary
-		fenceTile.setBoundsWidth(35); //the width of the rectangle boundary base on the X,Y points set from above
-		fenceTile.setBoundsHeight(17);//the height of the rectangle boundary base on the X,Y points set from above		
-		fenceTile.setWalkable(false); //default of tile is walkable, but this tile is not walkable so it as "false"
-		fenceTile.setShowCollissionRect(false); //set true to view, collision rectangle-for testing purpose
-		
-		//fence tile(left) settings, tile class has a default setting but for those tile that are not walkable, we change those default seetings
-		fenceTile=new FenceTile(42); //2 is the id of tile, which will be the index of the array which will hold this tile
-		tiles[42]=fenceTile;	
-		fenceTile.setxDistance(0); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		fenceTile.setyDistance(0); //the Y of rectangle Boundary
-		fenceTile.setBoundsWidth(63); //the width of the rectangle boundary base on the X,Y points set from above
-		fenceTile.setBoundsHeight(17);//the height of the rectangle boundary base on the X,Y points set from above		
-		fenceTile.setWalkable(false); //default of tile is walkable, but this tile is not walkable so it as "false"
-		fenceTile.setShowCollissionRect(false); //set true to view, collision rectangle-for testing purpose
-		
-		//fence tile(left) settings, tile class has a default setting but for those tile that are not walkable, we change those default seetings
-		fenceTile=new FenceTile(43); //2 is the id of tile, which will be the index of the array which will hold this tile
-		tiles[43]=fenceTile;	
-		fenceTile.setxDistance(0); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		fenceTile.setyDistance(0); //the Y of rectangle Boundary
-		fenceTile.setBoundsWidth(0); //the width of the rectangle boundary base on the X,Y points set from above
-		fenceTile.setBoundsHeight(0);//the height of the rectangle boundary base on the X,Y points set from above		
-		fenceTile.setWalkable(false); //default of tile is walkable, but this tile is not walkable so it as "false"
-		fenceTile.setShowCollissionRect(false); //set true to view, collision rectangle-for testing purpose
-		
-		//fence tile(left) settings, tile class has a default setting but for those tile that are not walkable, we change those default seetings
-		fenceTile=new FenceTile(44); //2 is the id of tile, which will be the index of the array which will hold this tile
-		tiles[44]=fenceTile;	
-		fenceTile.setxDistance(32); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		fenceTile.setyDistance(0); //the Y of rectangle Boundary
-		fenceTile.setBoundsWidth(6); //the width of the rectangle boundary base on the X,Y points set from above
-		fenceTile.setBoundsHeight(64);//the height of the rectangle boundary base on the X,Y points set from above		
-		fenceTile.setWalkable(false); //default of tile is walkable, but this tile is not walkable so it as "false"
-		fenceTile.setShowCollissionRect(false); //set true to view, collision rectangle-for testing purpose
-		
-		//fence tile(left) settings, tile class has a default setting but for those tile that are not walkable, we change those default seetings
-		fenceTile=new FenceTile(45); //2 is the id of tile, which will be the index of the array which will hold this tile
-		tiles[45]=fenceTile;	
-		fenceTile.setxDistance(32); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		fenceTile.setyDistance(0); //the Y of rectangle Boundary
-		fenceTile.setBoundsWidth(32); //the width of the rectangle boundary base on the X,Y points set from above
-		fenceTile.setBoundsHeight(16);//the height of the rectangle boundary base on the X,Y points set from above		
-		fenceTile.setWalkable(false); //default of tile is walkable, but this tile is not walkable so it as "false"
-		fenceTile.setShowCollissionRect(false); //set true to view, collision rectangle-for testing purpose
-		
-		//fence tile(left) settings, tile class has a default setting but for those tile that are not walkable, we change those default seetings
-		fenceTile=new FenceTile(46); //2 is the id of tile, which will be the index of the array which will hold this tile
-		tiles[46]=fenceTile;	
-		fenceTile.setxDistance(0); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		fenceTile.setyDistance(0); //the Y of rectangle Boundary
-		fenceTile.setBoundsWidth(64); //the width of the rectangle boundary base on the X,Y points set from above
-		fenceTile.setBoundsHeight(16);//the height of the rectangle boundary base on the X,Y points set from above		
-		fenceTile.setWalkable(false); //default of tile is walkable, but this tile is not walkable so it as "false"
-		fenceTile.setShowCollissionRect(false); //set true to view, collision rectangle-for testing purpose
-		
-		fenceTile=new FenceTile(47); //2 is the id of tile, which will be the index of the array which will hold this tile
-		tiles[47]=fenceTile;	
-		fenceTile.setxDistance(32); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		fenceTile.setyDistance(0); //the Y of rectangle Boundary
-		fenceTile.setBoundsWidth(32); //the width of the rectangle boundary base on the X,Y points set from above
-		fenceTile.setBoundsHeight(16);//the height of the rectangle boundary base on the X,Y points set from above		
-		fenceTile.setWalkable(false); //default of tile is walkable, but this tile is not walkable so it as "false"
-		fenceTile.setShowCollissionRect(false); //set true to view, collision rectangle-for testing purpose
-		
-		fenceTile=new FenceTile(48); //2 is the id of tile, which will be the index of the array which will hold this tile
-		tiles[48]=fenceTile;	
-		fenceTile.setxDistance(32); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		fenceTile.setyDistance(0); //the Y of rectangle Boundary
-		fenceTile.setBoundsWidth(32); //the width of the rectangle boundary base on the X,Y points set from above
-		fenceTile.setBoundsHeight(16);//the height of the rectangle boundary base on the X,Y points set from above		
-		fenceTile.setWalkable(false); //default of tile is walkable, but this tile is not walkable so it as "false"
-		fenceTile.setShowCollissionRect(false); //set true to view, collision rectangle-for testing purpose
-		
-		fenceTile=new FenceTile(49); //2 is the id of tile, which will be the index of the array which will hold this tile
-		tiles[49]=fenceTile;	
-		fenceTile.setxDistance(32); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		fenceTile.setyDistance(0); //the Y of rectangle Boundary
-		fenceTile.setBoundsWidth(32); //the width of the rectangle boundary base on the X,Y points set from above
-		fenceTile.setBoundsHeight(16);//the height of the rectangle boundary base on the X,Y points set from above		
-		fenceTile.setWalkable(false); //default of tile is walkable, but this tile is not walkable so it as "false"
-		fenceTile.setShowCollissionRect(false); //set true to view, collision rectangle-for testing purpose
-		
-	
-		//---------------------------------------------------------------------------------------
-		//					all street tiles starts width id 20 and up
-		//fence tile(left) settings, tile class has a default setting but for those tile that are not walkable, we change those default seetings
-		streetTile=new Street(50); //2 is the id of tile, which will be the index of the array which will hold this tile
-		tiles[50]=streetTile;	
-		streetTile.setxDistance(0); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		streetTile.setyDistance(0); //the Y of rectangle Boundary
-		streetTile.setBoundsWidth(0); //the width of the rectangle boundary base on the X,Y points set from above
-		streetTile.setBoundsHeight(0);//the height of the rectangle boundary base on the X,Y points set from above		
-		streetTile.setWalkable(false); //default of tile is walkable, but this tile is not walkable so it as "false"
-		streetTile.setShowCollissionRect(false); //set true to view, collision rectangle-for testing purpose
-		
-		
-		
-		
-		//---------------------------------------------------------------------------------------
-		//					all river tiles starts width id 20 and up
-		riverTile=new River(20);
-		tiles[20]=riverTile;
-		riverTile.setxDistance(0); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		riverTile.setyDistance(8); //the Y of rectangle Boundary
-		riverTile.setBoundsWidth(64); //the width of the rectangle boundary base on the X,Y points set from above
-		riverTile.setBoundsHeight(56);//the height of the rectangle boundary base on the X,Y points set from above	
-		riverTile.setShowCollissionRect(false);
-		
-		riverTile=new River(21);
-		tiles[21]=riverTile;		
-		riverTile.setShowCollissionRect(false);
-		
-		riverTile=new River(22);
-		tiles[22]=riverTile;		
-		riverTile.setShowCollissionRect(false);
-		//---------------------------------------------------------------------------------------
-		
-		
-		bridgeTile=new Bridge(30);
-		tiles[30]=bridgeTile;
-		bridgeTile.setxDistance(0); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		bridgeTile.setyDistance(7); //the Y of rectangle Boundary
-		bridgeTile.setBoundsWidth(50); //the width of the rectangle boundary base on the X,Y points set from above
-		bridgeTile.setBoundsHeight(57);//the height of the rectangle boundary base on the X,Y points set from above	
-		bridgeTile.setShowCollissionRect(false);
-		
-		bridgeTile=new Bridge(31);
-		tiles[31]=bridgeTile;
-		bridgeTile.setxDistance(0); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		bridgeTile.setyDistance(0); //the Y of rectangle Boundary
-		bridgeTile.setBoundsWidth(50); //the width of the rectangle boundary base on the X,Y points set from above
-		bridgeTile.setBoundsHeight(56);//the height of the rectangle boundary base on the X,Y points set from above	
-		bridgeTile.setShowCollissionRect(false);
-		
-		bridgeTile=new Bridge(32);
-		tiles[32]=bridgeTile;
-		bridgeTile.setxDistance(0); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		bridgeTile.setyDistance(0); //the Y of rectangle Boundary
-		bridgeTile.setBoundsWidth(0); //the width of the rectangle boundary base on the X,Y points set from above
-		bridgeTile.setBoundsHeight(0);//the height of the rectangle boundary base on the X,Y points set from above	
-		bridgeTile.setShowCollissionRect(true);
-		
-		bridgeTile=new Bridge(33);
-		tiles[33]=bridgeTile;
-		bridgeTile.setxDistance(10); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		bridgeTile.setyDistance(9); //the Y of rectangle Boundary
-		bridgeTile.setBoundsWidth(54); //the width of the rectangle boundary base on the X,Y points set from above
-		bridgeTile.setBoundsHeight(55);//the height of the rectangle boundary base on the X,Y points set from above	
-		bridgeTile.setShowCollissionRect(false);
-		
-		
-		bridgeTile=new Bridge(34);
-		tiles[34]=bridgeTile;
-		bridgeTile.setxDistance(10); //the X of rectangle Boundary, 30 here will be added to the Current Tile X coordinate
-		bridgeTile.setyDistance(0); //the Y of rectangle Boundary
-		bridgeTile.setBoundsWidth(54); //the width of the rectangle boundary base on the X,Y points set from above
-		bridgeTile.setBoundsHeight(55);//the height of the rectangle boundary base on the X,Y points set from above	
-		bridgeTile.setShowCollissionRect(false);
-		
-		tileMapNotation=readTileMapNotationAsString(path); //read the string notation of tile map		
-		init();
-	}
-	
-	private String readTileMapNotationAsString(String path){
-		StringBuilder builder=new StringBuilder();				
-		try{
-			BufferedReader br=new BufferedReader(new FileReader(path));
-			String line;			
-			while((line=br.readLine())!=null){
 				
-				builder.append(line+"\n");
-			}		
-			br.close();
-		}catch(IOException e){
+		
+		Document d = loadXMLDocument("res/worlds/map/world_1.tmx");
+		try {
+			
+			tileSets = readTMXTileSets(d);
+			map = getTMXLayers(d);			
+			mapEntities = readTMXMapEntities(d);
+			collisionBoxes = readTMXCollisionBox(d);
+			
+			initSourceImage();
+			
+		} catch (ParserConfigurationException e) {
+			// TODO Auto-generated catch block
 			e.printStackTrace();
-		}		
-		return builder.toString();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (SAXException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}	
+		
+		
+		
+		
+		//System.out.print(layer.length);
 	}
 	
-	public void init(){		
-		String[] tileMapTokens=tileMapNotation.split("\\s+");
-		worldRow=tileMapNotation.split("\n").length-1; //split each \n to count the no. of tile vertically minus 1 
-															//because the first line is the starting row, col of the player
-		
-		worldWidth=tileMapNotation.split("\n")[worldRow].split(" ").length;//count the last row of the line base on worldRow 
-																				//to count the no. of tile horizontally
-		
-		tileMaps=new int[worldWidth][worldRow];
-		int ctr=2; //because the first two characters are the row and column of the player
-		
-		for(int row=0;row<worldRow;row++){
-			for(int col=0;col<worldWidth;col++){	 //inner loop here is x because we need to fill the first dimension of the array first
-											//before going to the second dimension
-				
-				tileMaps[col][row]=Integer.parseInt(tileMapTokens[ctr]); //each token hold id of tile / index of Tile Array
-				
-				ctr++;				
-			}
-		}
+	
+	public ArrayList<Rectangle> getCollisionBoxes() {
+		return collisionBoxes;
+	}	
+	
+	
+	public ArrayList<MapEntity> getMapEntity() {
+		return mapEntities;
+	}
 
+
+	private void initSourceImage() {
+		sourceImage = new BufferedImage[tileSets.size()];	
+		int rows = 0; int cols = 0; int id = 0;
+		BufferedImage tmp;
+		
+		for(int i = 0; i < tileSets.size(); i++) {
+			
+			sourceImage[i] = ImageLoader.loadImage( tileSets.get(i).basePath );	
+			
+			rows = tileSets.get(i).rowCount;
+			cols = tileSets.get(i).columnCount;
+			
+			for(int y = 0; y < rows; y++) {
+				for(int x = 0; x < cols; x++) {					
+					tmp = sourceImage[i].getSubimage(x * TILEWIDTH, y * TILEHEIGHT, TILEWIDTH, TILEHEIGHT);					
+					tileImage.add(tmp);
+				}
+			}
+			
+			
+		}
+		
+		
+		
 		
 	}
 	
+	private Document loadXMLDocument(String path) {
+		Document doc = null;
+		
+		try {
+			DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();        
+			DocumentBuilder dBuilder;
+			dBuilder = dbFactory.newDocumentBuilder();
+			doc = dBuilder.parse(path);
+			doc.getDocumentElement().normalize();
+		} catch (ParserConfigurationException | SAXException | IOException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+		
+		
+		return doc;
+	}
 	
-	public void render(Graphics g){		
+	private ArrayList<Rectangle> readTMXCollisionBox(Document doc){
+		ArrayList<Rectangle> cb =  new ArrayList<>();
+		NodeList obj = doc.getElementsByTagName("object");
+
+		for (int i = 0; i < obj.getLength(); i++) {
+			Element e = (Element) obj.item(i);
+					
+			cb.add( new Rectangle(Integer.parseInt(e.getAttribute("x")),Integer.parseInt(e.getAttribute("y")),Integer.parseInt(e.getAttribute("width")),Integer.parseInt(e.getAttribute("height"))) );
+		}		
 		
-		xOffset=(int)GameCamera.xOffset; //get Current X offset value
-		yOffset=(int)GameCamera.yOffset; //get Current Y offset value
+		return cb;		
+	}
+	
+	
+	private ArrayList<TileSet> readTMXTileSets(Document doc) throws ParserConfigurationException, IOException, SAXException {
+		ArrayList<TileSet> tileSetList =  new ArrayList<>();
+		NodeList nlTileSets = doc.getElementsByTagName("tileset");
+			
+		//get tileSets
+		for (int i = 0; i < nlTileSets.getLength(); i++) {
+			Element e = (Element) nlTileSets.item(i);
+			Element x = (Element) e.getElementsByTagName("image").item(0);			
+			tileSetList.add( new TileSet(x.getAttribute("source"), Integer.parseInt(e.getAttribute("firstgid")) , Integer.parseInt(e.getAttribute("tilewidth")), Integer.parseInt(e.getAttribute("tileheight")), Integer.parseInt(e.getAttribute("tilecount")), Integer.parseInt(e.getAttribute("columns"))) );
+		}		
 		
-		int index;		
+		return tileSetList;		
+	}
+	
+	
+	private ArrayList<MapEntity> readTMXMapEntities(Document doc) throws ParserConfigurationException, IOException, SAXException {
+		ArrayList<MapEntity> mapEntityList = new ArrayList<>();		
+		NodeList nList = doc.getElementsByTagName("imagelayer");	
 		
-		for(int col=0;col<worldWidth;col++){				
-			for(int row=0;row<worldRow;row++){
-				index=tileMaps[col][row]; //tileMap array holds the id that came from Map Text file, id is also the same index used on Tile Array
-				x=(col*tileWidth)-xOffset;
-				y=(row*tileHeight)-yOffset;
-				
-				//for rendering efficiency, tile should not be drawn if if X coordinates of the TILE is 
-				//less than 0 which is negative x and not greater than the WIDTH of the screen.. then same is true of Y coordinate and HEIGHT
-				if((x+Tile.TILE_WIDTH>=0 && x<=game.getDisplay().getWidth()) && (y+Tile.TILE_HEIGHT>=0 && y<=game.getDisplay().getHeight() )){
-					tiles[index].render(g,x,y); //column times tileWidth will convert column to pixel from Min X(0) to Current X
+		for (int i = 0; i < nList.getLength(); i++) {
+			Element e = (Element) nList.item(i);
+			Element x = (Element) e.getElementsByTagName("image").item(0);				
+			mapEntityList.add( new MapEntity( x.getAttribute("source").toString(), Integer.parseInt(e.getAttribute("offsetx")), Integer.parseInt(e.getAttribute("offsety")), Integer.parseInt(x.getAttribute("width")), Integer.parseInt(x.getAttribute("height")) ) );
+		
+			//System.out.println(x.getAttribute("source").toString());
+		
+		}		
+		return mapEntityList;		
+	}
+	
+	
+	
+	
+	private MapLayer[] getTMXLayers(Document doc) throws ParserConfigurationException, SAXException, IOException{
+		MapLayer[] ml = null;	
+		
+		NodeList nMap = doc.getElementsByTagName("map"); //returns array of nodes
+		Element a = (Element) nMap.item(0);
+		
+		mapRow = Integer.parseInt( a.getAttribute("height") ); //no. of rows of the map
+		mapCol = Integer.parseInt( a.getAttribute("width") ); //no. of columns of the map
+		
+		TILEHEIGHT = Integer.parseInt( a.getAttribute("tileheight") );
+		TILEWIDTH = Integer.parseInt( a.getAttribute("tileheight") );
+		
+		
+		NodeList mapLayers = doc.getElementsByTagName("layer"); //returns array of nodes
+		ml = new MapLayer[mapLayers.getLength()];			
+		for (int i = 0; i < mapLayers.getLength(); i++) {
+							
+			Element e = (Element) mapLayers.item(i);		
+			
+			ml[i] = new MapLayer( e.getTextContent() ,  mapRow , mapCol );			            		
+
+		}		
+		return ml;
+
+	}
+	
+	
+	
+	public void render(Graphics g){
+		int id = 0; 		
+		
+		int xOffSet = (int) GameCamera.xOffset;
+		int yOffSet = (int) GameCamera.yOffset;
+		int renderX = 0; 
+		int renderY = 0;	
+		TileSet t;
+		
+		
+		for(MapLayer m : map) {	
+			
+			//int drawCounter = 0;
+			for(int row = 0; row < mapRow; row++) {
+				for(int col = 0; col < mapCol; col++) {
+					id =  m.tiles[row][col]; //just breaking the rule of encapsulation here!!! haha
+					
+					//now we want to know the image we are going to use base on id, 
+					//what part of the image we are going to crop (x,y,width,height)
+					
+					if(id > 0) {
+						t = getTileSet(id);
+						if(t != null) {
+							
+							renderX = (col * TILEWIDTH) - xOffSet;
+							renderY = (row * TILEHEIGHT) - yOffSet;
+							
+							if( (renderX + TILEWIDTH > 0 && renderX < Display.width ) && ( renderY + TILEHEIGHT > 0 && renderY < Display.height) ) {
+								g.drawImage(tileImage.get(id - 1), renderX, renderY, null);	
+								//drawCounter++;
+							}							
+											
+							
+						}
+					}
 					
 				}
-				
-			}					
+			}		
+			
+			//System.out.println("COUNT : " + drawCounter);
+			
 		}
 		
+		
 	}
+	
+	
+	public TileSet getTileSet(int id) {
+		int i = 0;
+		for(TileSet t : tileSets) {
+			i =  (int) Math.floor( t.fgid / id ); 
+			return tileSets.get(i);
+		}
+		
+		return null;
+	}
+	
 
 	public int getWorldWidth() { //width in pixel
-		return this.worldWidth*this.tileWidth;
+		return this.mapCol * this.TILEWIDTH;
 	}
 	
 
 	public int getWorldHeight() { //height in pixel
-		return this.worldRow*this.tileHeight;
+		return this.mapRow * this.TILEHEIGHT;
 	}
 	
-	public Tile getCurrentTile(int row,int col){		
-		int index=tileMaps[col][row];
-		
-		return tiles[index];
-	}
+	
 
 	
 
